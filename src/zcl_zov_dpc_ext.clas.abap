@@ -138,9 +138,38 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
   endmethod.
 
 
-  method OVCABECALHOSET_GET_ENTITYSET.
+  METHOD ovcabecalhoset_get_entityset.
 
-  endmethod.
+    DATA: lt_cab       TYPE STANDARD TABLE OF zovcab,
+          ls_cab       TYPE zovcab,
+          ls_entityset LIKE LINE OF et_entityset.
+
+    "Pegando os dados da tabela ZOVCAB"
+    SELECT *
+      INTO TABLE lt_cab
+      FROM zovcab.
+
+    "Passando linha a linha e convertendo para entityset"
+    LOOP AT lt_cab INTO ls_cab.
+
+      CLEAR ls_entityset.
+
+      "Passando os campos que dá para a entityset"
+      MOVE-CORRESPONDING ls_cab TO ls_entityset.
+
+      "Passando manualmente o criador pois no BD o nome do campo é diferente"
+      ls_entityset-criadopor = ls_cab-criacao_usuario.
+
+      "Juntando data e hora em um só campo na entityset"
+      CONVERT DATE ls_cab-criacao_data
+              TIME ls_cab-criacao_hora
+         INTO TIME STAMP ls_entityset-datacriacao
+         TIME ZONE sy-zonlo.
+
+      APPEND ls_entityset TO et_entityset.
+    ENDLOOP.
+
+  ENDMETHOD.
 
 
   method OVCABECALHOSET_UPDATE_ENTITY.
@@ -204,9 +233,36 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
   endmethod.
 
 
-  method OVITEMSET_GET_ENTITYSET.
+  METHOD ovitemset_get_entityset.
+    DATA: lv_ordemid       TYPE int4,"Variavel para armazenar IDs"
+          lt_ordemid_range TYPE RANGE OF int4, "Range de IDs de ordem"
+          ls_ordemid_range LIKE LINE OF lt_ordemid_range, "Linha do range"
+          ls_key_tab       LIKE LINE OF it_key_tab. "Linha da tabela de chaves"
 
-  endmethod.
+    "Se o usuário informar a ordem, retorna somente os itens da mesma"
+    READ TABLE it_key_tab INTO ls_key_tab WITH KEY name = 'OrdemID'.
+
+    IF sy-subrc = 0.
+
+      lv_ordemid = ls_key_tab-value.
+
+      CLEAR ls_ordemid_range.
+
+      "Preenchendo o range"
+      ls_ordemid_range-sign   = 'I'.
+      ls_ordemid_range-option = 'EQ'.
+      ls_ordemid_range-low    = lv_ordemid.
+      APPEND ls_ordemid_range TO lt_ordemid_range.
+
+    ENDIF.
+
+    "Se lt_ordemid_range estiver vazio, vai retornar todos os itens da tabela"
+    SELECT *
+      INTO CORRESPONDING FIELDS OF TABLE et_entityset
+      FROM zovitem
+      WHERE ordemid IN lt_ordemid_range.
+
+  ENDMETHOD.
 
 
   method OVITEMSET_UPDATE_ENTITY.
