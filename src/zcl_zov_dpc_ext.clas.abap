@@ -210,6 +210,11 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
 
     CONCATENATE LINES OF lt_orderby INTO ls_orderby SEPARATED BY ''.
 
+    "Ordenação obrigatória caso nenhuma seja definida"
+    IF ls_orderby = ''.
+      ls_orderby = 'OrdemID ASCENDING'."Ficará fixo se não tiver nenhuma ordenação"
+    ENDIF.
+
     "Pegando os dados da tabela ZOVCAB"
     SELECT *
       FROM zovcab
@@ -242,9 +247,43 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
   ENDMETHOD.
 
 
-  method OVCABECALHOSET_UPDATE_ENTITY.
+  METHOD ovcabecalhoset_update_entity.
 
-  endmethod.
+    "Objeto para emitir msg para quem estiver consumindo serviço"
+    DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
+
+    "Puxando dados da requisição e copiando para estrutura"
+    io_data_provider->read_entry_data(
+      IMPORTING
+        es_data = er_entity
+    ).
+
+    "Puxando o campo chave OrdemID"
+    er_entity-ordemid = it_key_tab[ name = 'OrdemID' ]-value.
+
+    "Atualizando os campos específicos"
+    UPDATE zovcab
+       SET clienteid  = er_entity-clienteid
+           totalitens = er_entity-totalitens
+           totalfrete = er_entity-totalfrete
+           totalordem = er_entity-totalordem
+           status     = er_entity-status
+     WHERE ordemid    = er_entity-ordemid.
+
+    "Se o UPDATE der errado lança a exceção"
+    IF sy-subrc IS NOT INITIAL.
+      lo_msg->add_message_text_only(
+        EXPORTING
+          iv_msg_type = 'E'
+          iv_msg_text = 'Erro ao atualizar ordem'
+      ).
+
+      RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+        EXPORTING
+          message_container = lo_msg.
+    ENDIF.
+
+  ENDMETHOD.
 
 
   METHOD ovitemset_create_entity.
@@ -395,7 +434,42 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
   ENDMETHOD.
 
 
-  method OVITEMSET_UPDATE_ENTITY.
+  METHOD ovitemset_update_entity.
 
-  endmethod.
+    "Objeto para emitir msg para quem estiver consumindo serviço"
+     DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
+
+    "Puxando dados da requisição que vem do JSON e copiando para estrutura"
+    io_data_provider->read_entry_data(
+      IMPORTING
+        es_data = er_entity
+    ).
+
+    er_entity-ordemid    = it_key_tab[ name = 'OrdemID' ]-value.
+    er_entity-itemid     = it_key_tab[ name = 'ItemID' ]-value.
+    er_entity-precototal = er_entity-quantidade * er_entity-precouni.
+
+    "Atualizando os campos específicos"
+    UPDATE zovitem
+       SET material   = er_entity-material
+           descricao  = er_entity-descricao
+           quantidade = er_entity-quantidade
+           precouni   = er_entity-precouni
+           precototal = er_entity-precototal
+     WHERE ordemid    = er_entity-ordemid
+       AND itemid     = er_entity-itemid.
+
+    "Se o UPDATE der errado lança a exceção"
+    IF sy-subrc IS NOT INITIAL.
+      lo_msg->add_message_text_only(
+        EXPORTING
+          iv_msg_type = 'E'
+          iv_msg_text = 'Erro ao atualizar ordem'
+      ).
+
+      RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+        EXPORTING
+          message_container = lo_msg.
+    ENDIF.
+  ENDMETHOD.
 ENDCLASS.
