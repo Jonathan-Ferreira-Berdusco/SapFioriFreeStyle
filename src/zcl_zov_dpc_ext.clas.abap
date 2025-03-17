@@ -189,12 +189,35 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
 
     DATA: lt_cab       TYPE STANDARD TABLE OF zovcab,
           ls_cab       TYPE zovcab,
-          ls_entityset LIKE LINE OF et_entityset.
+          ls_entityset LIKE LINE OF et_entityset,
+          lt_orderby   TYPE STANDARD TABLE OF string,
+          ls_orderby   TYPE string.
+
+    LOOP AT it_order INTO DATA(ls_order).
+
+      TRANSLATE ls_order-property TO UPPER CASE.
+      TRANSLATE ls_order-order    TO UPPER CASE.
+
+      IF ls_order-order = 'DESC'.
+        ls_order-order = 'DESCENDING'.
+      ELSE.
+        ls_order-order = 'ASCENDING'.
+      ENDIF.
+
+      APPEND |{ ls_order-property } { ls_order-order }| TO lt_orderby.
+
+    ENDLOOP.
+
+    CONCATENATE LINES OF lt_orderby INTO ls_orderby SEPARATED BY ''.
 
     "Pegando os dados da tabela ZOVCAB"
     SELECT *
-      INTO TABLE lt_cab
-      FROM zovcab.
+      FROM zovcab
+      WHERE (iv_filter_string)
+      ORDER BY (ls_orderby)
+      INTO TABLE @lt_cab
+      UP TO @is_paging-top ROWS
+      OFFSET @is_paging-skip.
 
     "Passando linha a linha e convertendo para entityset"
     LOOP AT lt_cab INTO ls_cab.
