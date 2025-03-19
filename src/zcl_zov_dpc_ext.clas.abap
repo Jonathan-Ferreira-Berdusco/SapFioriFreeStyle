@@ -475,6 +475,8 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
     "Objeto para emitir msg para quem estiver consumindo serviço"
     DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
 
+    DATA: lv_flag_erro TYPE flag.
+
     "Puxando dados da requisição e copiando para estrutura"
     io_data_provider->read_entry_data(
       IMPORTING
@@ -483,6 +485,40 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
 
     "Puxando o campo chave OrdemID"
     er_entity-ordemid = it_key_tab[ name = 'OrdemID' ]-value.
+
+    "Validações"
+    IF er_entity-clienteid = 0. "Validando o código do cliente"
+      lv_flag_erro = 'X'.
+
+      lo_msg->add_message_text_only(
+        EXPORTING
+          iv_msg_type = 'E'
+          iv_msg_text = 'Cliente vazio'
+      ).
+    ENDIF.
+
+    IF er_entity-totalordem < 10. "Ordem tem que ter um valor minimo "
+      lv_flag_erro = 'X'.
+
+      lo_msg->add_message(
+        EXPORTING
+          iv_msg_type = 'E'
+          iv_msg_id   = 'ZOV'
+          iv_msg_number = 0
+          iv_msg_v1 = 'R$ 10,00'
+          iv_msg_v2 = |{ er_entity-ordemid }|
+      ).
+    ENDIF.
+
+    IF lv_flag_erro = 'X'.
+
+      RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+        EXPORTING
+          message_container = lo_msg
+          http_status_code  = 400.
+
+    ENDIF.
+
 
     "Atualizando os campos específicos"
     UPDATE zovcab
