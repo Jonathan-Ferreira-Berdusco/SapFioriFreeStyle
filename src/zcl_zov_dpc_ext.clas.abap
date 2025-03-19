@@ -4,6 +4,9 @@ class ZCL_ZOV_DPC_EXT definition
   create public .
 
 public section.
+
+  methods /IWBEP/IF_MGW_APPL_SRV_RUNTIME~CREATE_DEEP_ENTITY
+    redefinition .
 protected section.
 
   methods MENSAGEMSET_CREATE_ENTITY
@@ -42,6 +45,168 @@ ENDCLASS.
 
 
 CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
+
+
+  METHOD /iwbep/if_mgw_appl_srv_runtime~create_deep_entity.
+
+    DATA: ls_deep_entity TYPE zcl_zov_mpc_ext=>ty_ordem_item, "Estrutura do deep entity"
+          ls_deep_item   TYPE zcl_zov_mpc_ext=>ts_ovitem, "Estrutura para o item que vai ser acessado"
+          ls_cab         TYPE zovcab, "Estrutura para o cabeçalho"
+          lt_item        TYPE STANDARD TABLE OF zovitem, "Tabela de itens"
+          ls_item        TYPE zovitem, "Estrutura do item"
+          lv_updkz       TYPE char1. "Flag para controlar o programa, se esta inserindo ou atualizando"
+
+    "Objeto para emitir mensagem para quem estiver consumindo o serviço"
+    DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
+
+    "Lendo os dados da requisição e copiando para a estrutura"
+    CALL METHOD io_data_provider->read_entry_data
+      IMPORTING
+        es_data = ls_deep_entity.
+
+    "Se o campo ORDEMID estiver vazio, quer dizer que estamos inserindo um ordem de venda"
+    IF ls_deep_entity-ordemid = 0.
+
+      lv_updkz = 'I'. "I = Inserção"
+
+      "Movendo o que dá para a estrutura "
+      MOVE-CORRESPONDING ls_deep_entity TO ls_cab.
+
+      "Completando os campos da estrutura manualmente"
+      ls_cab-criacao_data    = sy-datum.
+      ls_cab-criacao_hora    = sy-uzeit.
+      ls_cab-criacao_usuario = sy-uname.
+
+      "Pegando o maior ID que estiver na tabela ZOVCAB"
+      SELECT SINGLE MAX( ordemid )
+        INTO ls_cab-ordemid
+        FROM zovcab.
+
+      "Incrementando o ID e inserindo na estrutura"
+      ls_cab-ordemid = ls_cab-ordemid + 1.
+
+    ELSE.
+
+      lv_updkz = 'U'.
+
+      "Carregando dados atuais do cabeçalho já cadastrado"
+      SELECT SINGLE *
+        INTO ls_cab
+        FROM zovcab
+       WHERE ordemid = ls_deep_entity-ordemid.
+
+      "Atualizando somente os campos que são necessário"
+      ls_cab-clienteid  = ls_deep_entity-clienteid.
+      ls_cab-status     = ls_deep_entity-status.
+      ls_cab-totalitens = ls_deep_entity-totalitens.
+      ls_cab-totalfrete = ls_deep_entity-totalfrete.
+      ls_cab-totalordem = ls_deep_entity-totalordem.
+
+    ENDIF.
+
+    "Trabalhando com Item"
+    LOOP AT ls_deep_entity-toovitem INTO ls_deep_item.
+
+      MOVE-CORRESPONDING ls_deep_item TO ls_item.
+      ls_item-ordemid = ls_cab-ordemid."Atualizando o campo ordemID pegando do cabeçalho"
+      APPEND ls_item TO lt_item.
+
+    ENDLOOP.
+
+    "Persistência Cabeçalho"
+    IF lv_updkz = 'I'.
+
+      "I = Insert"
+      INSERT zovcab FROM ls_cab.
+
+      IF sy-subrc IS NOT INITIAL.
+
+        ROLLBACK WORK.
+
+        lo_msg->add_message_text_only(
+          EXPORTING
+            iv_msg_type = 'E'
+            iv_msg_text = 'Erro ao inserir ordem'
+        ).
+
+        RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+          EXPORTING
+            message_container = lo_msg.
+      ENDIF.
+
+    ELSE.
+
+      "U = Update ou Modify"
+      MODIFY zovcab FROM ls_cab.
+
+      IF sy-subrc IS NOT INITIAL.
+
+        ROLLBACK WORK.
+
+        lo_msg->add_message_text_only(
+          EXPORTING
+            iv_msg_type = 'E'
+            iv_msg_text = 'Erro ao atualizar ordem'
+        ).
+
+        RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+          EXPORTING
+            message_container = lo_msg.
+      ENDIF.
+    ENDIF.
+
+    "Persistência itens"
+
+    "Deletando os itens da tabela com base no ordemID do cabeçaho"
+    "Se for um Insert, não terá itens na tabela ZOVITEM, agora se for um Modify terá"
+    "Ele vai deletar e inserir os materiais novamente com o novo ordemID"
+    DELETE FROM zovitem WHERE ordemid = ls_cab-ordemid.
+
+    IF lines( lt_item ) > 0. "Se tiver item para cadastrar ou atualizar"
+
+      INSERT zovitem FROM TABLE lt_item. "Inserirndo os novos materiais"
+
+      IF sy-subrc IS NOT INITIAL.
+
+        ROLLBACK WORK.
+
+        lo_msg->add_message_text_only(
+          EXPORTING
+            iv_msg_type = 'E'
+            iv_msg_text = 'Erro ao inserir itens'
+        ).
+
+        RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+          EXPORTING
+            message_container = lo_msg.
+      ENDIF.
+    ENDIF.
+
+    "Confirmando as atualizações"
+    COMMIT WORK AND WAIT.
+
+    "Atualizando deep entity de retorno"
+
+    "Cabeçalho"
+    ls_deep_entity-ordemid = ls_cab-ordemid.
+
+    CONVERT DATE ls_cab-criacao_data
+            TIME ls_cab-criacao_hora
+            INTO TIME STAMP ls_deep_entity-datacriacao
+            TIME ZONE sy-zonlo.
+
+    "Item"
+    LOOP AT ls_deep_entity-toovitem ASSIGNING FIELD-SYMBOL(<fs_deep_item>).
+      <fs_deep_item>-ordemid = ls_cab-ordemid."atualizando o ID da ordem no item"
+    ENDLOOP.
+
+    CALL METHOD me->copy_data_to_ref
+      EXPORTING
+        is_data = ls_deep_entity
+      CHANGING
+        cr_data = er_deep_entity.
+
+  ENDMETHOD.
 
 
   method MENSAGEMSET_CREATE_ENTITY.
