@@ -215,8 +215,8 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
 
     DATA: lv_ordemid  TYPE zovcab-ordemid, "Váriavel que recebe ID da ordem"
           lv_status   TYPE zovcab-status, "Váriavel que recebe os status"
-          lt_bapiret2 TYPE STANDARD TABLE OF zcl_zov_mpc_ext=>ts_mensagem, "Tabela de msg para retornar"
-          ls_bapiret2 TYPE zcl_zov_mpc_ext=>ts_mensagem. "Struta da tabela de msg"
+          lt_bapiret2 TYPE STANDARD TABLE OF zcl_zov_mpc_ext=>mensagem2, "Tabela de msg para retornar"
+          ls_bapiret2 TYPE zcl_zov_mpc_ext=>mensagem2. "Struta da tabela de msg"
 
     "Verificação da function import"
     IF iv_action_name = 'ZFI_ATUALIZA_STATUS'.
@@ -233,15 +233,15 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
       IF sy-subrc IS INITIAL.
 
         CLEAR ls_bapiret2.
-        ls_bapiret2-type = 'S'. "Sucesso"
-        ls_bapiret2-message = 'Status atualizado'.
+        ls_bapiret2-tipo = 'S'. "Sucesso"
+        ls_bapiret2-mensagem = 'Status atualizado'.
         APPEND ls_bapiret2 TO lt_bapiret2.
 
       ELSE.
 
         CLEAR ls_bapiret2.
-        ls_bapiret2-type = 'E'. "Erro"
-        ls_bapiret2-message = 'Erro ao atualizar status'.
+        ls_bapiret2-tipo = 'E'. "Erro"
+        ls_bapiret2-mensagem = 'Erro ao atualizar status'.
         APPEND ls_bapiret2 TO lt_bapiret2.
 
       ENDIF.
